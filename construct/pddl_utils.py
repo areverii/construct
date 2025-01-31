@@ -1,16 +1,23 @@
-# construct/pddl_utils.py
+import os
 
-# minimal pddl generation
+# Ensure generated folder exists
+GENERATED_FOLDER = "gen"
+os.makedirs(GENERATED_FOLDER, exist_ok=True)
 
-def schedule_to_pddl(schedule_data) -> str:
-    # build domain/problem strings
-    # keep it very simplistic here
-    domain_str = "(define (domain construction))"  # placeholder
-    problem_str = "(define (problem proj))"        # placeholder
-    return domain_str, problem_str
-
-def save_pddl(domain_str: str, problem_str: str, base_name: str = "construction"):
-    with open(f"{base_name}_domain.pddl", "w") as f:
+def save_pddl(domain_str: str, problem_str: str, base_name: str):
+    """
+    Save the PDDL domain and problem file in the generated folder.
+    """
+    with open(f"{GENERATED_FOLDER}/{base_name}_domain.pddl", "w") as f:
         f.write(domain_str)
-    with open(f"{base_name}_problem.pddl", "w") as f:
+
+    with open(f"{GENERATED_FOLDER}/{base_name}_problem.pddl", "w") as f:
         f.write(problem_str)
+
+def schedule_to_pddl(schedule_data):
+    """
+    Convert schedule data to a simple PDDL representation.
+    """
+    domain_str = "(define (domain construction))"
+    problem_str = "(define (problem proj))"
+    return domain_str, problem_str

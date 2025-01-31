@@ -1,12 +1,13 @@
-# construct/ingestion.py
-
 import pandas as pd
+import numpy as np
 from typing import Optional
 from datetime import datetime
 from .models import ScheduleData, ScheduleRow
-import numpy as np
 
-def ingest_schedule_data(file_path: str, schedule_id: Optional[str] = None) -> ScheduleData:
+def ingest_schedule_data(file_path: str, schedule_id: Optional[str] = None, schedule_type: str = "target") -> ScheduleData:
+    """
+    Loads an Excel file into a structured ScheduleData format without saving it back to Excel.
+    """
     df = pd.read_excel(file_path)
     
     # Convert string-based IDs
@@ -19,7 +20,7 @@ def ingest_schedule_data(file_path: str, schedule_id: Optional[str] = None) -> S
     df["wbs_value"] = df["wbs_value"].astype(str)
     df["task_name"] = df["task_name"].astype(str)
 
-    # Convert date columns safely
+    # Convert date columns safely and make timezone-naive
     datetime_cols = [
         "start_date", "end_date", "bl_start", "bl_finish",
         "constraint_date", "deadline_date", "date_and_time"
@@ -27,7 +28,7 @@ def ingest_schedule_data(file_path: str, schedule_id: Optional[str] = None) -> S
     for col in datetime_cols:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
-            # df[col] = df[col].apply(lambda x: x.to_pydatetime() if pd.notna(x) else None)
+            df[col] = df[col].dt.tz_localize(None)  # Remove timezone info
 
     # Convert numeric columns properly
     numeric_cols = ["percent_done", "duration", "crew_size", "deadline_variance", "ordered_parent_index", "p6_wbs_level"]
@@ -45,4 +46,6 @@ def ingest_schedule_data(file_path: str, schedule_id: Optional[str] = None) -> S
     rows = [ScheduleRow(**row) for row in df.to_dict(orient="records")]
     
     final_schedule_id = schedule_id or (rows[0].project_id if rows else "demo_schedule")
+
+    # Return structured ScheduleData (no Excel output)
     return ScheduleData(schedule_id=final_schedule_id, tasks=rows)
