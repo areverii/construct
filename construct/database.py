@@ -12,7 +12,7 @@ schedule_table = Table(
     "schedules",
     metadata,
     Column("id", Integer, primary_key=True),
-    Column("name", String, unique=True),
+    Column("name", String),
     Column("type", String),  # "target" or "in-progress"
     Column("raw_data", String),  # JSON serialized schedule data
 )

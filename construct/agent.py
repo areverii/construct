@@ -6,16 +6,6 @@ class ConstructionAgent:
     def __init__(self, engine):
         self.engine = engine
 
-    def process_schedule(self, schedule_data: ScheduleData):
-        """
-        Processes and structures the schedule data.
-        """
-        return {
-            "schedule_id": schedule_data.schedule_id,
-            "project_name": schedule_data.tasks[0].project_name if schedule_data.tasks else None,
-            "tasks": [task.model_dump(mode="json") for task in schedule_data.tasks],
-        }
-
     def fetch_schedule(self, schedule_id: str, schedule_type: str) -> ScheduleData:
         """
         Fetch a schedule (target or in-progress) from the database.
@@ -45,12 +35,26 @@ class ConstructionAgent:
         insights = []
         for target_task, progress_task in zip(target.tasks, progress.tasks):
             if target_task.task_id == progress_task.task_id:
-                if progress_task.percent_done < target_task.percent_done:
-                    insights.append(f"Task {progress_task.task_name} is behind schedule.")
-                elif progress_task.percent_done > target_task.percent_done:
-                    insights.append(f"Task {progress_task.task_name} is ahead of schedule.")
+                # ✅ Handle None values by treating missing progress as 0.0
+                target_percent_done = target_task.percent_done if target_task.percent_done is not None else 0.0
+                progress_percent_done = progress_task.percent_done if progress_task.percent_done is not None else 0.0
 
+                if progress_percent_done < target_percent_done:
+                    insights.append(f"Task '{progress_task.task_name}' is behind schedule (progress: {progress_percent_done}%, expected: {target_percent_done}%).")
+                elif progress_percent_done > target_percent_done:
+                    insights.append(f"Task '{progress_task.task_name}' is ahead of schedule (progress: {progress_percent_done}%, expected: {target_percent_done}%).")
+        
         return {
             "schedule_id": schedule_id,
-            "insights": insights
+            "insights": insights if insights else ["No major schedule deviations detected."]
+        }
+
+    def process_schedule(self, schedule_data: ScheduleData):
+        """
+        Processes and structures the schedule data.
+        """
+        return {
+            "schedule_id": schedule_data.schedule_id,
+            "project_name": schedule_data.tasks[0].project_name if schedule_data.tasks else None,
+            "tasks": [task.model_dump(mode="json") for task in schedule_data.tasks],
         }

@@ -11,27 +11,28 @@ app = typer.Typer()
 @app.command("ingest-schedule")
 def ingest_schedule_cli(file_path: str, schedule_type: str = typer.Option("target", help="Type of schedule: 'target' or 'in-progress'")):
     """
-    Ingest a schedule file and store it in the database.
+    Ingest a schedule file and process it.
     """
     engine = init_db()
     agent = ConstructionAgent(engine)
 
-    # Ingest the Excel file and convert to structured format
     schedule_data = ingest_schedule_data(file_path, schedule_type=schedule_type)
 
-    # Convert schedule data to JSON and store it in the database
+    print(f"DEBUG: Storing schedule {schedule_data.schedule_id} as {schedule_type}")
+
+    # Store in DB with explicit COMMIT
     with engine.connect() as conn:
         conn.execute(
             schedule_table.insert(),
             {
                 "name": schedule_data.schedule_id,
                 "type": schedule_type,
-                "raw_data": schedule_data.json()  # Store JSON representation
+                "raw_data": schedule_data.json()
             }
         )
+        conn.commit()  # Explicitly commit the transaction
 
-    result = agent.process_schedule(schedule_data)
-    typer.echo(json.dumps(result))
+    print(f"DEBUG: Successfully stored {schedule_data.schedule_id} ({schedule_type}) in DB")
 
 @app.command("compare-schedules")
 def compare_schedules_cli(schedule_id: str):
