@@ -1,17 +1,17 @@
 import os
 
 # Ensure generated folder exists
-GENERATED_FOLDER = "gen"
-os.makedirs(GENERATED_FOLDER, exist_ok=True)
+GEN_FOLDER = "gen"
+os.makedirs(GEN_FOLDER, exist_ok=True)
 
 def save_pddl(domain_str: str, problem_str: str, base_name: str):
     """
     Save the PDDL domain and problem file in the generated folder.
     """
-    with open(f"{GENERATED_FOLDER}/{base_name}_domain.pddl", "w") as f:
+    with open(f"{GEN_FOLDER}/{base_name}_domain.pddl", "w") as f:
         f.write(domain_str)
 
-    with open(f"{GENERATED_FOLDER}/{base_name}_problem.pddl", "w") as f:
+    with open(f"{GEN_FOLDER}/{base_name}_problem.pddl", "w") as f:
         f.write(problem_str)
 
 def schedule_to_pddl(schedule_data):
