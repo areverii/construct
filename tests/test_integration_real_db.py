@@ -18,13 +18,13 @@ def test_full_integration_db():
     # init a fresh engine for this test db
     engine = init_db(db_url=f"sqlite:///{TEST_DB_PATH}")
 
-    # ingest target schedule
+    # ingest target schedule with new (optimized) PDDL generation enabled.
     ingest_schedule_data(
         file_path="resources/test_1.xlsx",
         schedule_id="240001",
         schedule_type="target",
         engine=engine,
-        auto_generate_pddl=True  # triggers pddl creation
+        auto_generate_pddl=True  # this now calls generate_pddl_for_schedule with use_optimized=True by default
     )
 
     # ingest in-progress schedule
@@ -35,11 +35,11 @@ def test_full_integration_db():
         engine=engine
     )
 
-    # set current date so the agent can compare actual vs expected
+    # set current in-progress date so that the agent can compare actual vs expected progress
     set_current_in_progress_date(
         engine=engine,
         schedule_id="240001",
-        user_date_str="2024-02-01 08:00:00"  # from the README example
+        user_date_str="2024-02-01 08:00:00"
     )
 
     # confirm that pddl files were generated
@@ -52,6 +52,12 @@ def test_full_integration_db():
         assert row, "pddl mapping not found for schedule_id=240001"
         assert os.path.exists(row.domain_file), f"domain file not found: {row.domain_file}"
         assert os.path.exists(row.problem_file), f"problem file not found: {row.problem_file}"
+    
+    # Optionally, check that the new domain file has our new chunking constructs.
+    with open(row.domain_file, "r") as f:
+        domain_content = f.read()
+    assert "(in-chunk" in domain_content, "Expected '(in-chunk' not found in domain file."
+    assert "(chunk-order" in domain_content, "Expected '(chunk-order' not found in domain file."
 
     # run analysis to ensure behind/ahead tasks are identified
     agent = ConstructionAgent(engine)
@@ -59,5 +65,5 @@ def test_full_integration_db():
     print("analysis result:", result)
     assert "schedule_id" in result
     assert "insights" in result
-    # optional: check if there's at least one behind-schedule or ahead-of-schedule message
+    # optional: check if there are any insights (warnings or indications of schedule deviations)
     assert result["insights"], "no schedule insights found"

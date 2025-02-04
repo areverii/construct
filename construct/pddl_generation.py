@@ -1,156 +1,134 @@
+# construct/pddl_generation.py
 import os
-import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import select, delete, insert
-from collections import defaultdict
-from construct.database import (
-    projects_table, tasks_table, dependencies_table,
-    pddl_mappings_table
-)
+from construct.database import projects_table, tasks_table, dependencies_table, pddl_mappings_table
 
-gen_folder = "gen"
-os.makedirs(gen_folder, exist_ok=True)
+GEN_FOLDER = "gen"
+os.makedirs(GEN_FOLDER, exist_ok=True)
 
 def save_pddl(domain_str: str, problem_str: str, base_name: str):
-    domain_path = os.path.join(gen_folder, f"{base_name}_domain.pddl")
-    problem_path = os.path.join(gen_folder, f"{base_name}_problem.pddl")
+    domain_path = os.path.join(GEN_FOLDER, f"{base_name}_domain.pddl")
+    problem_path = os.path.join(GEN_FOLDER, f"{base_name}_problem.pddl")
     with open(domain_path, "w") as f:
         f.write(domain_str)
     with open(problem_path, "w") as f:
         f.write(problem_str)
     return domain_path, problem_path
 
-def _parse_dt(s):
-    """Helper to parse a 'YYYY-MM-DD HH:MM:SS' string into a datetime, or None."""
-    if not s:
-        return None
-    try:
-        return datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
-    except ValueError:
-        return None
-
-def _compute_duration_if_missing(task):
-    """If no positive duration, compute from (bl_finish - bl_start), in days."""
-    dur = task.get("duration")
-    if dur and dur > 0:
-        return dur
-    start_str = task.get("bl_start")
-    fin_str = task.get("bl_finish")
-    start_dt = _parse_dt(start_str)
-    fin_dt = _parse_dt(fin_str)
-    if start_dt and fin_dt and fin_dt > start_dt:
-        delta = fin_dt - start_dt
-        return delta.total_seconds() / 86400.0
-    return None
-
-def _build_parent_map(tasks):
-    """Return a dict: parent_id -> list of child task_ids."""
-    pmap = defaultdict(list)
-    for t in tasks:
-        p = t.get("parent_id")
-        if p:
-            pmap[p].append(t["task_id"])
-    return pmap
-
-def schedule_to_pddl(schedule_id: str, engine):
-    """Collect tasks, skip summary rows, ensure valid durations, then build domain/problem."""
-    # fetch project row
+def generate_optimized_pddl(schedule_id: str, engine, chunk_duration_days: int = 28):
+    """
+    Generate a PDDL domain and problem that:
+      - Groups tasks into time chunks (e.g. 28‑day intervals)
+      - Introduces a new type “chunk” and predicates for task grouping and ordering.
+    This is intended to be a starting point for a scheduling formulation that can
+    later be fed into a planner (e.g. OPTIC) to generate candidate schedules.
+    """
+    # Query target schedule tasks
     with engine.connect() as conn:
-        proj = conn.execute(
-            select(projects_table)
-            .where(projects_table.c.schedule_id == schedule_id)
-            .where(projects_table.c.schedule_type == "target")
-        ).fetchone()
-        if not proj:
-            raise ValueError(f"no target project found for {schedule_id}")
+        result = conn.execute(
+            select(tasks_table).where(
+                tasks_table.c.schedule_id == schedule_id,
+                tasks_table.c.schedule_type == "target"
+            )
+        )
+        tasks = [dict(row._mapping) for row in result]
+    if not tasks:
+        raise ValueError(f"No target tasks found for schedule_id {schedule_id}")
 
-        # gather tasks
-        rows = conn.execute(
-            select(tasks_table)
-            .where(tasks_table.c.schedule_id == schedule_id)
-            .where(tasks_table.c.schedule_type == "target")
-        ).fetchall()
-        all_tasks = [dict(r._mapping) for r in rows]
+    # Convert baseline start/finish strings to datetime objects.
+    for t in tasks:
+        if t.get("bl_start"):
+            t["bl_start_dt"] = datetime.strptime(t["bl_start"], "%Y-%m-%d %H:%M:%S")
+        else:
+            t["bl_start_dt"] = None
+        if t.get("bl_finish"):
+            t["bl_finish_dt"] = datetime.strptime(t["bl_finish"], "%Y-%m-%d %H:%M:%S")
+        else:
+            t["bl_finish_dt"] = None
 
-        # gather dependencies
-        deps = conn.execute(
-            select(dependencies_table)
-            .where(dependencies_table.c.schedule_id == schedule_id)
-        ).fetchall()
-        deps = [dict(d._mapping) for d in deps]
+    # Determine overall project baseline start and finish
+    valid_starts = [t["bl_start_dt"] for t in tasks if t["bl_start_dt"] is not None]
+    valid_finishes = [t["bl_finish_dt"] for t in tasks if t["bl_finish_dt"] is not None]
+    if not valid_starts or not valid_finishes:
+        raise ValueError("Cannot compute project boundaries from tasks.")
+    project_start = min(valid_starts)
+    project_finish = max(valid_finishes)
 
-    if not all_tasks:
-        raise ValueError(f"no tasks found for {schedule_id}")
+    # Determine the number of chunks needed
+    total_days = (project_finish - project_start).days
+    num_chunks = (total_days // chunk_duration_days) + 1
 
-    # build parent->children map
-    pmap = _build_parent_map(all_tasks)
+    # Assign each task a chunk based on its baseline start time
+    for t in tasks:
+        if t["bl_start_dt"]:
+            t["chunk"] = int((t["bl_start_dt"] - project_start).days // chunk_duration_days)
+        else:
+            t["chunk"] = 0
 
-    # separate leaf tasks vs. summaries
-    leaf_tasks = []
-    for t in all_tasks:
+    # ----- Build Domain PDDL -----
+    domain_lines = []
+    domain_lines.append("(define (domain construction)")
+    domain_lines.append("  (:requirements :typing :durative-actions :fluents)")
+    domain_lines.append("  (:types task chunk)")
+    domain_lines.append("  (:predicates")
+    domain_lines.append("     (done ?t - task)")
+    domain_lines.append("     (in-chunk ?t - task ?c - chunk)")
+    domain_lines.append("     (chunk-order ?c1 - chunk ?c2 - chunk)")  # c1 comes before c2
+    domain_lines.append("  )")
+    # For each task, create a durative action.
+    # (This simple formulation simply “executes” the task within its designated chunk.)
+    for t in tasks:
         tid = t["task_id"]
-        # if this tid has children, it's a summary -> skip
-        if tid in pmap and len(pmap[tid]) > 0:
-            # summary row
-            continue
-        # compute or confirm duration
-        final_dur = _compute_duration_if_missing(t)
-        t["final_duration"] = final_dur
-        # if final_dur <= 0 => skip or treat as milestone
-        if not final_dur or final_dur <= 0:
-            print(f"Skipping 0-duration task or invalid baseline: {t['task_name']} ({tid})")
-            continue
-        leaf_tasks.append(t)
+        duration = t["duration"] if t.get("duration") is not None else 1
+        chunk = t["chunk"]
+        domain_lines.append(f"  (:durative-action do_{tid}")
+        domain_lines.append("     :parameters ()")
+        domain_lines.append(f"     :duration (= ?duration {duration})")
+        domain_lines.append("     :condition (and")
+        domain_lines.append(f"                   (in-chunk t_{tid} chunk_{chunk})")
+        domain_lines.append(f"                   (at start (not (done t_{tid})))")
+        domain_lines.append("                 )")
+        domain_lines.append("     :effect (at end (done t_{tid}))")
+        domain_lines.append("  )")
+    domain_lines.append(")")
+    domain_str = "\n".join(domain_lines)
 
-    if not leaf_tasks:
-        raise ValueError(f"no valid leaf tasks found for {schedule_id}")
+    # ----- Build Problem PDDL -----
+    problem_lines = []
+    problem_lines.append(f"(define (problem proj_{schedule_id})")
+    problem_lines.append("  (:domain construction)")
+    # Declare objects: tasks and chunks
+    task_objs = " ".join(f"t_{t['task_id']}" for t in tasks)
+    chunk_objs = " ".join(f"chunk_{i}" for i in range(num_chunks))
+    problem_lines.append("  (:objects")
+    problem_lines.append(f"     {task_objs} - task")
+    problem_lines.append(f"     {chunk_objs} - chunk")
+    problem_lines.append("  )")
+    # Init: assign each task its chunk and define the ordering between chunks
+    problem_lines.append("  (:init")
+    for t in tasks:
+        problem_lines.append(f"     (in-chunk t_{t['task_id']} chunk_{t['chunk']})")
+    for i in range(num_chunks - 1):
+        problem_lines.append(f"     (chunk-order chunk_{i} chunk_{i+1})")
+    problem_lines.append("  )")
+    # Goal: every task must be done.
+    problem_lines.append("  (:goal (and")
+    for t in tasks:
+        problem_lines.append(f"     (done t_{t['task_id']})")
+    problem_lines.append("  ))")
+    # (Optionally, add a metric for optimization here if your planner supports it.)
+    problem_lines.append(")")
+    problem_str = "\n".join(problem_lines)
 
-    # build domain
-    domain_str = "(define (domain construction)\n"
-    domain_str += "  (:requirements :typing :durative-actions)\n"
-    domain_str += "  (:types task)\n\n"
-    for t in leaf_tasks:
-        tid = t["task_id"]
-        domain_str += f"  (:durative-action do_{tid}\n"
-        domain_str += f"     :parameters ()\n"
-        domain_str += f"     :duration (= ?duration {t['final_duration']})\n"
-        domain_str += "     :condition (and (at start (not-done)))\n"
-        domain_str += "     :effect (and (at end (done)))\n"
-        domain_str += "  )\n"
-    domain_str += ")\n"
-
-    # build problem
-    problem_str = f"(define (problem proj_{schedule_id})\n"
-    problem_str += "  (:domain construction)\n"
-    # objects
-    problem_str += "  (:objects\n"
-    for t in leaf_tasks:
-        problem_str += f"    t_{t['task_id']} - task\n"
-    problem_str += "  )\n\n"
-    # init
-    problem_str += "  (:init\n"
-    # optional, insert constraints from dependencies
-    for d in deps:
-        problem_str += f"    ;; must finish {d['depends_on_task_id']} before {d['task_id']}\n"
-    problem_str += "    (not-done)\n"
-    problem_str += "  )\n"
-    # trivial goal
-    problem_str += "  (:goal (and (done)))\n"
-    problem_str += ")\n"
-
-    return domain_str, problem_str
-
-def generate_pddl_for_schedule(schedule_id: str, engine):
-    """Main entry point for PDDL generation from a target schedule."""
-    domain_str, problem_str = schedule_to_pddl(schedule_id, engine)
-    # pick a filename
-    base_name = f"{schedule_id}_{int(datetime.datetime.utcnow().timestamp())}"
+    # Save the generated domain and problem files.
+    base_name = f"{schedule_id}_{int(datetime.utcnow().timestamp())}_opt"
     domain_path, problem_path = save_pddl(domain_str, problem_str, base_name)
 
-    # store or update mapping
+    # Update the pddl mapping table in the database.
     with engine.begin() as conn:
         conn.execute(
-            delete(pddl_mappings_table)
-            .where(pddl_mappings_table.c.schedule_id == schedule_id)
+            delete(pddl_mappings_table).where(pddl_mappings_table.c.schedule_id == schedule_id)
         )
         conn.execute(
             insert(pddl_mappings_table),
@@ -158,17 +136,88 @@ def generate_pddl_for_schedule(schedule_id: str, engine):
                 "schedule_id": schedule_id,
                 "domain_file": domain_path,
                 "problem_file": problem_path,
-                "created_at": str(datetime.datetime.utcnow())
+                "created_at": str(datetime.utcnow())
             }
         )
+    return domain_str, problem_str
 
-def get_latest_pddl_mapping(schedule_id: str, engine):
+def generate_simple_pddl(schedule_id: str, engine):
+    """
+    The original (simple) PDDL generation implementation.
+    """
     with engine.connect() as conn:
-        row = conn.execute(
-            select(pddl_mappings_table)
-            .where(pddl_mappings_table.c.schedule_id == schedule_id)
-            .order_by(pddl_mappings_table.c.id.desc())
+        project = conn.execute(
+            select(projects_table)
+            .where(projects_table.c.schedule_id == schedule_id)
+            .where(projects_table.c.schedule_type == "target")
         ).fetchone()
-    if not row:
-        return None
-    return dict(row._mapping)
+        if not project:
+            raise ValueError(f"no target project found for {schedule_id}")
+        tasks_result = conn.execute(
+            select(tasks_table)
+            .where(tasks_table.c.schedule_id == schedule_id)
+            .where(tasks_table.c.schedule_type == "target")
+        ).fetchall()
+        tasks = [dict(r._mapping) for r in tasks_result]
+        dependencies_result = conn.execute(
+            select(dependencies_table)
+            .where(dependencies_table.c.schedule_id == schedule_id)
+        ).fetchall()
+        dependencies = [dict(r._mapping) for r in dependencies_result]
+    # Basic validations
+    for t in tasks:
+        if not t.get("bl_start") or not t.get("bl_finish"):
+            raise ValueError(f"missing baseline dates for task {t['task_id']}")
+        if not t.get("duration") or t["duration"] <= 0:
+            raise ValueError(f"invalid duration for task {t['task_id']}")
+    # Build a simple domain as before.
+    domain_lines = []
+    domain_lines.append("(define (domain construction)")
+    domain_lines.append("  (:requirements :typing :durative-actions)")
+    domain_lines.append("  (:types task)")
+    for t in tasks:
+        tid = t["task_id"]
+        domain_lines.append(f"  (:durative-action do_{tid}")
+        domain_lines.append("     :parameters ()")
+        domain_lines.append(f"     :duration (= ?duration {t['duration']})")
+        domain_lines.append("     :condition (and (at start (not-done)))")
+        domain_lines.append("     :effect (and (at end (done)))")
+        domain_lines.append("  )")
+    domain_lines.append(")")
+    domain_str = "\n".join(domain_lines)
+    # Build a simple problem.
+    problem_lines = []
+    problem_lines.append(f"(define (problem proj_{schedule_id})")
+    problem_lines.append("  (:domain construction)")
+    problem_lines.append("  (:objects")
+    for t in tasks:
+        problem_lines.append(f"    t_{t['task_id']} - task")
+    problem_lines.append("  )")
+    problem_lines.append("  (:init")
+    for d in dependencies:
+        problem_lines.append(f"    ;; Dependency: task {d['task_id']} depends on {d['depends_on_task_id']}")
+    problem_lines.append("    (not-done)")
+    problem_lines.append("  )")
+    problem_lines.append("  (:goal (and (done)))")
+    problem_lines.append(")")
+    problem_str = "\n".join(problem_lines)
+    base_name = f"{schedule_id}_{int(datetime.utcnow().timestamp())}"
+    domain_path, problem_path = save_pddl(domain_str, problem_str, base_name)
+    with engine.begin() as conn:
+        conn.execute(delete(pddl_mappings_table).where(pddl_mappings_table.c.schedule_id == schedule_id))
+        conn.execute(insert(pddl_mappings_table),
+                     {"schedule_id": schedule_id,
+                      "domain_file": domain_path,
+                      "problem_file": problem_path,
+                      "created_at": str(datetime.utcnow())})
+    return domain_str, problem_str
+
+def generate_pddl_for_schedule(schedule_id: str, engine, use_optimized: bool = True, chunk_duration_days: int = 28):
+    """
+    Depending on the flag, generate either the optimized/chunked PDDL
+    or the simple (old) version.
+    """
+    if use_optimized:
+        return generate_optimized_pddl(schedule_id, engine, chunk_duration_days)
+    else:
+        return generate_simple_pddl(schedule_id, engine)
