@@ -18,25 +18,6 @@ class ConstructionAgent:
             ).fetchall()
         return [dict(r._mapping) for r in rows]
 
-    # def compute_expected_percent_done(self, bl_start_str, bl_finish_str, current_day: datetime) -> float:
-    #     start_dt = parse_user_date(bl_start_str)
-    #     finish_dt = parse_user_date(bl_finish_str)
-    #     if not start_dt or not finish_dt:
-    #         return 0.0
-
-    #     # piecewise approach
-    #     if current_day < start_dt:
-    #         return 0.0
-    #     if current_day >= finish_dt:
-    #         return 100.0
-
-    #     total_sec = (finish_dt - start_dt).total_seconds()
-    #     elapsed_sec = (current_day - start_dt).total_seconds()
-    #     if total_sec <= 0:
-    #         return 100.0
-    #     fraction = elapsed_sec / total_sec
-    #     return max(0.0, min(100.0, fraction * 100.0))
-
     def compute_expected_percent_done(self, bl_start_str: str, bl_finish_str: str, current_day: datetime) -> float:
         """
         piecewise approach:
