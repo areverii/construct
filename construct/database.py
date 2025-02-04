@@ -1,7 +1,8 @@
 # construct/database.py
-
 import os
-from sqlalchemy import create_engine, Table, Column, Integer, String, MetaData, ForeignKey, Float
+from sqlalchemy import (
+    create_engine, Table, Column, Integer, String, MetaData, ForeignKey, Float
+)
 
 metadata = MetaData()
 gen_folder = "gen"
@@ -32,15 +33,10 @@ tasks_table = Table(
     Column("parent_id", String),
     Column("p6_wbs_guid", String),
     Column("percent_done", Float),
-
-    # baseline columns (for target schedule)
-    Column("bl_start", String),   # e.g. "1/27/2020 7:00"
-    Column("bl_finish", String),  # e.g. "5/30/2025 17:00"
-
-    # actual / forecast columns (for in-progress schedule)
+    Column("bl_start", String),
+    Column("bl_finish", String),
     Column("start_date", String),
     Column("end_date", String),
-
     Column("duration", Float),
     Column("status", String)
 )
@@ -52,6 +48,17 @@ dependencies_table = Table(
     Column("schedule_id", String, ForeignKey("projects.schedule_id")),
     Column("task_id", String, ForeignKey("tasks.task_id")),
     Column("depends_on_task_id", String, ForeignKey("tasks.task_id"))
+)
+
+# module 2 mapping table
+pddl_mappings_table = Table(
+    "pddl_mappings",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("schedule_id", String),
+    Column("domain_file", String),
+    Column("problem_file", String),
+    Column("created_at", String),
 )
 
 def init_db(db_url: str = None):
