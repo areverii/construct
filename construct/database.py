@@ -1,12 +1,11 @@
-# construct/database.py
 import os
 from sqlalchemy import (
     create_engine, Table, Column, Integer, String, MetaData, ForeignKey, Float
 )
 
 metadata = MetaData()
-gen_folder = "gen"
-os.makedirs(gen_folder, exist_ok=True)
+GEN_FOLDER = "gen"
+os.makedirs(GEN_FOLDER, exist_ok=True)
 
 projects_table = Table(
     "projects",
@@ -50,7 +49,6 @@ dependencies_table = Table(
     Column("depends_on_task_id", String, ForeignKey("tasks.task_id"))
 )
 
-# module 2 mapping table
 pddl_mappings_table = Table(
     "pddl_mappings",
     metadata,
@@ -61,9 +59,20 @@ pddl_mappings_table = Table(
     Column("created_at", String),
 )
 
+# New: events table to record ingestion and update events.
+events_table = Table(
+    "events",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("schedule_id", String),
+    Column("event_type", String),   # e.g. "in_progress_ingestion", "task_update"
+    Column("event_details", String),
+    Column("timestamp", String),
+)
+
 def init_db(db_url: str = None):
     if not db_url:
-        db_path = os.path.abspath(os.path.join(gen_folder, "construct.db"))
+        db_path = os.path.abspath(os.path.join(GEN_FOLDER, "construct.db"))
         db_url = f"sqlite:///{db_path}"
     print(f"debug: initializing db at {db_url}")
     engine = create_engine(db_url, echo=True)

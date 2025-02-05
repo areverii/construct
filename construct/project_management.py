@@ -9,18 +9,16 @@ def try_parse_datetime(date_str: str) -> Optional[str]:
     Accept common user-supplied formats, parse to a datetime object,
     then return the 'YYYY-MM-DD HH:MM:SS' string for DB storage.
     """
-    # possible user input formats
     formats = [
         "%Y-%m-%d",             # '2023-09-07'
-        "%Y-%m-%d %H:%M:%S",    # '2023-09-07 08:00:00'
-        "%m/%d/%Y %H:%M:%S %p", # '9/7/2023 8:00:00 AM'
-        "%m/%d/%Y %I:%M:%S %p", # same as above, sometimes %I used
-        "%m/%d/%Y",             # '9/7/2023' (no time)
+        "%Y-%m-%d %H:%M:%S",     # '2023-09-07 08:00:00'
+        "%m/%d/%Y %H:%M:%S %p",  # '9/7/2023 8:00:00 AM'
+        "%m/%d/%Y %I:%M:%S %p",  # same as above, sometimes using %I
+        "%m/%d/%Y",             # '9/7/2023'
     ]
     for fmt in formats:
         try:
             dt = datetime.datetime.strptime(date_str, fmt)
-            # normalize to ISO-like: 'YYYY-MM-DD HH:MM:SS'
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             pass
