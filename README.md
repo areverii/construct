@@ -1,10 +1,29 @@
-docker compose down  # Stop old container
-docker compose up --build
+# Setup and Usage
+
+## prerequisites
+- install docker
+- install docker compose
+- clone this repository
+
+## setup
+1. run `./setup.sh` to build and start the docker containers.
+2. confirm the api is running by checking the logs:  
+   ```bash
+   docker compose logs -f
+
+
+## testing
+docker compose run --rm backend pytest
+
+## verify api
+curl http://localhost:8000/
 
 
 
 
 
+DEPRECATED (to be removed/revised)
+----------
 
 ## 1. Installation & Setup
 

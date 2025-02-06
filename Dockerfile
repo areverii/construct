@@ -1,11 +1,11 @@
-# Use Python 3.9-slim as base image
-FROM python:3.9-slim AS base
+# use python 3.9-slim as base image
+FROM python:3.9-slim
 
-# Set environment variables
+# set env variables
 ENV POETRY_VERSION=1.4.2
 ENV PATH="/root/.local/bin:/root/.planutils/bin:${PATH}"
 
-# Install system dependencies
+# install system dependencies, apptainer, poetry, and planutils
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     default-jre \
@@ -16,27 +16,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL https://raw.githubusercontent.com/apptainer/apptainer/main/tools/install-unprivileged.sh | bash -s - /root/apptainer \
     && ln -s /root/apptainer/bin/apptainer /usr/local/bin/singularity \
-    && pip install --upgrade pip poetry==${POETRY_VERSION} planutils \
+    && pip install --upgrade pip \
+    && pip install poetry==${POETRY_VERSION} planutils \
     && planutils install optic --yes
 
-# Set working directory
+# set working directory
 WORKDIR /app
 
-# Copy only dependency files first (for better caching)
+# copy dependency files from app (not from app/construct)
 COPY app/pyproject.toml app/poetry.lock /app/
 
-# Copy `construct/` before running poetry install
+# copy the construct folder (with your .py files)
 COPY app/construct /app/construct
 
-# Install dependencies
+# install dependencies
 RUN poetry config virtualenvs.create false && poetry install --only main --no-interaction
 
-# Copy the rest of the application files (using volumes for live-reloading)
+# copy the rest of app (overwriting if needed)
 COPY app/ /app/
 
-# Copy entrypoint script and make it executable
+# copy entrypoint script and make executable
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Use entrypoint script
 ENTRYPOINT ["/entrypoint.sh"]
