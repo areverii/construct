@@ -1,3 +1,11 @@
+docker compose down  # Stop old container
+docker compose up --build
+
+
+
+
+
+
 ## 1. Installation & Setup
 
 ### Install Dependencies

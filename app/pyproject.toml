@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "construction scheduling + pddl + llm agent"
 authors = ["Nicholas Woodward <nicholas.ean.woodward@gmail.com>"]
 license = "MIT"
-readme = "README.md"
 packages = [{ include = "construct" }]
 
 [tool.poetry.dependencies]
