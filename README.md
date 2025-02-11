@@ -123,20 +123,3 @@ print(json.dumps(result, indent=2))
   ]
 }
 ```
-
-### 3. Planned Next Steps
-
-1. **Regression/ML Pipeline**
-	* Replace the piecewise logic (compute_expected_percent_done) with a regression model that uses historical performance, crew sizes, location, and other features to predict a more realistic “expected” progress.
-	* Store model predictions in the DB or generate them on-the-fly during analysis.
-2. **LLM/Agent Integration**
-	* Integrate a library such as LangChain to create a “Construct Agent” capable of:
-		+ Reading analysis results (e.g. behind-schedule tasks).
-		+ Using a knowledge base of prior construction projects to advise on typical delays or required mitigations.
-		+ Generating advanced warnings like: “You won’t finish future task X on time if you don’t complete current task Y by date Z.”
-3. **Critical Path & Dependencies**
-	* Exploit the dependencies_table to analyze how a single slip might cascade and affect the overall milestone completion.
-	* Integrate a scheduling algorithm solver to highlight “if you delay by 2 days here, the final completion date moves out by 5 days.”
-4. **User Interface**
-	* Add a CLI or Web UI to let project managers view tasks, Gantt charts, or directly prompt an LLM.
-	* Possibly generate graphical warnings or a Slack/Teams notification when tasks slip behind a threshold.
