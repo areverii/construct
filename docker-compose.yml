@@ -2,9 +2,11 @@ services:
   backend:
     build: .
     ports:
-      - "8000:8000"  # Exposes FastAPI
+      - "8000:8000"
     volumes:
-      - ./app:/app  # Enables live reload
+      - ./construct:/app/construct
+      - ./tests:/app/tests
     environment:
       - ENV=development
-    command: []  # Allows entrypoint.sh to decide what to run
+      - PYTHONPATH=/app   # so you can import e.g. "import construct.agent"
+    command: []

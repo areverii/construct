@@ -1,11 +1,10 @@
-# use python 3.9-slim as base image
+# use python 3.9-slim
 FROM python:3.9-slim
 
-# set env variables
 ENV POETRY_VERSION=1.4.2
 ENV PATH="/root/.local/bin:/root/.planutils/bin:${PATH}"
 
-# install system dependencies, apptainer, poetry, and planutils
+# install system packages, apptainer, poetry, etc.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     default-jre \
@@ -20,22 +19,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && pip install poetry==${POETRY_VERSION} planutils \
     && planutils install optic --yes
 
-# set working directory
 WORKDIR /app
 
-# copy dependency files from app (not from app/construct)
-COPY app/pyproject.toml app/poetry.lock /app/
-
-# copy the construct folder (with your .py files)
-COPY app/construct /app/construct
+# copy configuration and package source so poetry can install
+COPY pyproject.toml poetry.lock /app/
+COPY construct/ /app/construct/
 
 # install dependencies
-RUN poetry config virtualenvs.create false && poetry install --only main --no-interaction
+RUN poetry install --with dev --no-interaction
 
-# copy the rest of app (overwriting if needed)
-COPY app/ /app/
-
-# copy entrypoint script and make executable
+# copy remaining files
+COPY tests/ /app/tests/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
