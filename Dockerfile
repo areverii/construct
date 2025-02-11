@@ -29,7 +29,14 @@ COPY construct/ /app/construct/
 RUN poetry install --with dev --no-interaction
 
 # copy remaining files
+
+# resources (TODO -- dynamic resource loading)
+COPY resources/ /app/resources/
+
+# pytests
 COPY tests/ /app/tests/
+
+# copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
