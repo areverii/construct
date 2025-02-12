@@ -1,0 +1,1 @@
+docker compose run --rm backend poetry run pytest /app/tests

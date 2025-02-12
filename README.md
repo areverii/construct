@@ -14,7 +14,7 @@
 
 ## testing
   ```bash
-  docker compose run --rm backend pytest
+  ./test.sh
   ```
 
 ## verify api
