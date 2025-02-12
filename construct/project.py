@@ -1,9 +1,9 @@
 # construct/project.py
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
-def create_project(project_name: str, schedule_id: str, project_folder: str) -> (str, str):
+def create_project(project_name: str, schedule_id: str, project_folder: str) -> tuple[str, str]:
     """
     Create a new project.
       - Creates (or reuses) the given project folder.
@@ -12,7 +12,7 @@ def create_project(project_name: str, schedule_id: str, project_folder: str) -> 
     Returns a tuple: (project_file_path, db_file_path)
     """
     os.makedirs(project_folder, exist_ok=True)
-    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     safe_name = project_name.replace(" ", "_")
     project_file = os.path.join(project_folder, f"{safe_name}_{schedule_id}_{timestamp}.cproj")
     db_file = os.path.join(project_folder, f"{schedule_id}.db")
@@ -20,8 +20,9 @@ def create_project(project_name: str, schedule_id: str, project_folder: str) -> 
     project_data = {
         "project_name": project_name,
         "schedule_id": schedule_id,
-        "created_at": datetime.utcnow().isoformat(),
-        "db_file": db_file
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "db_file": db_file,
+        "project_folder": project_folder
     }
     with open(project_file, "w") as f:
         json.dump(project_data, f, indent=2)

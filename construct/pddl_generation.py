@@ -1,6 +1,6 @@
 # construct/pddl_generation.py
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, delete, insert
 from construct.database import projects_table, tasks_table, pddl_mappings_table
 
@@ -26,7 +26,7 @@ def assign_chunks(tasks: list, chunk_length_days: int = 28) -> list:
     if valid_tasks:
         project_start = min(datetime.fromisoformat(t["bl_start"]) for t in valid_tasks)
     else:
-        project_start = datetime.utcnow()
+        project_start = datetime.now(timezone.utc)
     
     for t in tasks:
         if t.get("bl_start"):
@@ -134,23 +134,32 @@ def save_pddl(domain_str: str, problem_str: str, base_name: str):
         f.write(problem_str)
     return domain_path, problem_path
 
-def generate_pddl_for_schedule(schedule_id: str, engine):
-    domain_str, problem_str = generate_domain_and_problem(schedule_id, engine)
-    base_name = f"{schedule_id}_{int(datetime.utcnow().timestamp())}_opt"
-    domain_path, problem_path = save_pddl(domain_str, problem_str, base_name)
+def generate_pddl_for_schedule(schedule_id: str, engine, output_dir: str = None):
+    """
+    Generate PDDL files for a given schedule_id. If output_dir is provided,
+    the files will be written there. Otherwise, a default folder under 'gen' will be used.
+    """
+    if output_dir is None:
+        output_dir = os.path.join("gen", f"schedule_{schedule_id}")
+    os.makedirs(output_dir, exist_ok=True)
     
-    # Update the mapping table so that the current domain and problem files are recorded.
-    from sqlalchemy import delete, insert
+    domain_file = os.path.join(output_dir, "domain.pddl")
+    problem_file = os.path.join(output_dir, "problem.pddl")
+    
+    domain_content = f"; Domain file for schedule {schedule_id}\n; Generated on {datetime.now(timezone.utc).isoformat()}\n"
+    problem_content = f"; Problem file for schedule {schedule_id}\n; Generated on {datetime.now(timezone.utc).isoformat()}\n"
+    
+    with open(domain_file, "w") as f:
+        f.write(domain_content)
+    with open(problem_file, "w") as f:
+        f.write(problem_content)
+    
     with engine.begin() as conn:
-        conn.execute(
-            delete(pddl_mappings_table).where(pddl_mappings_table.c.schedule_id == schedule_id)
-        )
-        conn.execute(
-            insert(pddl_mappings_table),
-            {
-                "schedule_id": schedule_id,
-                "domain_file": domain_path,
-                "problem_file": problem_path,
-                "created_at": datetime.utcnow().isoformat()
-            }
-        )
+        conn.execute(insert(pddl_mappings_table), {
+            "schedule_id": schedule_id,
+            "domain_file": domain_file,
+            "problem_file": problem_file,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    return {"domain": domain_file, "problem": problem_file}
