@@ -1,1 +1,1 @@
-docker compose run --rm backend poetry run pytest /app/tests
+docker compose run --rm backend poetry run pytest -s /app/tests
