@@ -1,11 +1,14 @@
 services:
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
       - ./construct:/app/construct
       - ./tests:/app/tests
+      - ./gen:/app/gen
     environment:
       - ENV=development
       - PYTHONPATH=/app   # so you can import e.g. "import construct.agent"

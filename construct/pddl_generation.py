@@ -136,7 +136,7 @@ def save_pddl(domain_str: str, problem_str: str, base_name: str):
 
 def generate_pddl_for_schedule(schedule_id: str, engine, output_dir: str = None):
     """
-    Generate PDDL files for a given schedule_id. If output_dir is provided,
+    Generate full PDDL files for a given schedule_id. If output_dir is provided,
     the files will be written there. Otherwise, a default folder under 'gen' will be used.
     """
     if output_dir is None:
@@ -146,13 +146,13 @@ def generate_pddl_for_schedule(schedule_id: str, engine, output_dir: str = None)
     domain_file = os.path.join(output_dir, "domain.pddl")
     problem_file = os.path.join(output_dir, "problem.pddl")
     
-    domain_content = f"; Domain file for schedule {schedule_id}\n; Generated on {datetime.now(timezone.utc).isoformat()}\n"
-    problem_content = f"; Problem file for schedule {schedule_id}\n; Generated on {datetime.now(timezone.utc).isoformat()}\n"
+    # Generate the full domain and problem definitions using tasks from the database
+    domain_str, problem_str = generate_domain_and_problem(schedule_id, engine)
     
     with open(domain_file, "w") as f:
-        f.write(domain_content)
+        f.write(domain_str)
     with open(problem_file, "w") as f:
-        f.write(problem_content)
+        f.write(problem_str)
     
     with engine.begin() as conn:
         conn.execute(insert(pddl_mappings_table), {
