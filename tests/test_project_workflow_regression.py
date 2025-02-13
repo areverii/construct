@@ -17,6 +17,17 @@ def client():
     from construct.api import app
     return TestClient(app)
 
+
+#TODO:
+# split this into multiple regression tests
+# - test_project_creation
+# - test_target_ingestion
+# - test_in_progress_ingestion
+# - test_pddl_generation
+# - test_pddl_mapping
+
+@pytest.mark.run(order=1)
+@pytest.mark.dependency(name="workflow")
 def test_project_workflow_regression(client, resources_dir, tmp_path):
     """
     Full regression test for the project workflow that:
