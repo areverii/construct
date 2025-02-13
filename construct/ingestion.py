@@ -5,23 +5,8 @@ from datetime import datetime
 from sqlalchemy import select, update, delete, insert
 from construct.database import projects_table, tasks_table, pddl_mappings_table, events_table
 from construct.models import ScheduleData
-from construct.pddl_generation import generate_pddl_for_schedule
-
-def _compute_duration_if_missing(row):
-    if row.get("duration") and row["duration"] > 0:
-        return row["duration"]
-    start_str = row.get("bl_start")
-    finish_str = row.get("bl_finish")
-    if not start_str or not finish_str:
-        return None
-    try:
-        start_dt = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
-        finish_dt = datetime.strptime(finish_str, "%Y-%m-%d %H:%M:%S")
-        delta = finish_dt - start_dt
-        duration_days = delta.total_seconds() / 86400.0
-        return duration_days
-    except ValueError:
-        return None
+from construct.eventing import event_manager, Event
+from construct.utils import compute_duration
 
 def ingest_schedule_data(
     file_path: str,
@@ -91,7 +76,7 @@ def ingest_schedule_data(
                     "percent_done": row.get("percent_done"),
                     "bl_start": bl_start,
                     "bl_finish": bl_finish,
-                    "duration": row.get("duration") or _compute_duration_if_missing(row),
+                    "duration": row.get("duration") or compute_duration(row.get("bl_start"), row.get("bl_finish")),
                     "status": row.get("status"),
                 }
             else:
@@ -106,15 +91,14 @@ def ingest_schedule_data(
                     "percent_done": row.get("percent_done"),
                     "start_date": row.get("start_date"),
                     "end_date": row.get("end_date"),
-                    "duration": row.get("duration") or _compute_duration_if_missing(row),
-                    "status": row.get("status"),
+                    "duration": row.get("duration") or compute_duration(row.get("bl_start"), row.get("bl_finish")),                    "status": row.get("status"),
                 }
             task_rows.append(task_dict)
     
         if task_rows:
             conn.execute(tasks_table.insert(), task_rows)
         
-        # Log an event for in-progress ingestions.
+        # Optionally log an event for in-progress ingestions.
         if schedule_type == "in-progress":
             conn.execute(
                 insert(events_table),
@@ -126,8 +110,15 @@ def ingest_schedule_data(
                 }
             )
     
-    # Generate PDDL if applicable.
-    if auto_generate_pddl and schedule_type == "target":
-        generate_pddl_for_schedule(schedule_id, engine, output_dir=project_folder)
+    # Instead of directly calling PDDL generation here, emit an event.
+    if auto_generate_pddl:
+        event = Event("schedule_ingested", {
+            "schedule_id": schedule_id,
+            "schedule_type": schedule_type,
+            "engine": engine,
+            "project_folder": project_folder,
+            "auto_generate_pddl": auto_generate_pddl
+        })
+        event_manager.emit(event)
     
     return ScheduleData(schedule_id=schedule_id, tasks=[])

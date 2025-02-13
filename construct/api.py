@@ -1,15 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Body
 from construct.database import init_db
 from construct.ingestion import ingest_schedule_data
 from construct.agent import ConstructionAgent
 from construct.llm_agent import run_llm_agent
 from construct.scheduler import run_optic
 import json
-from fastapi import HTTPException, Body
 from pydantic import BaseModel
 from construct.project import create_project
 import os
 from sqlalchemy import text
+from construct.eventing import event_manager
+from construct.event_handlers import schedule_ingested_handler
 
 app = FastAPI()
 
@@ -25,6 +26,11 @@ def create_project_endpoint(request: CreateProjectRequest):
     os.makedirs(folder, exist_ok=True)
     project_file, db_file = create_project(request.project_name, request.schedule_id, folder)
     engine = init_db(db_url=f"sqlite:///{db_file}")
+
+    # Register the schedule_ingested event handler if not already registered.
+    if schedule_ingested_handler not in event_manager.listeners.get("schedule_ingested", []):
+        event_manager.add_listener("schedule_ingested", schedule_ingested_handler)
+
     # Return absolute paths for consistency.
     return {
         "message": "Project created successfully",

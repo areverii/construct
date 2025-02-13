@@ -1,6 +1,21 @@
 # construct/utils.py
 from datetime import datetime
 
+def compute_duration(bl_start, bl_finish):
+    """
+    Compute the duration (in days) between bl_start and bl_finish.
+    Returns 1 if the computed duration is 0 or negative or if an error occurs.
+    """
+    from datetime import datetime
+    fmt = "%Y-%m-%d %H:%M:%S"
+    try:
+        start = datetime.strptime(bl_start, fmt)
+        finish = datetime.strptime(bl_finish, fmt)
+        duration = (finish - start).days
+        return duration if duration > 0 else 1
+    except Exception:
+        return 1
+
 def parse_user_date(date_str: str):
     if not date_str:
         return None

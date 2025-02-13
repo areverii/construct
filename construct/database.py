@@ -55,6 +55,7 @@ pddl_mappings_table = Table(
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("schedule_id", String),
+    Column("chunk", String, nullable=True),
     Column("domain_file", String),
     Column("problem_file", String),
     Column("created_at", String),

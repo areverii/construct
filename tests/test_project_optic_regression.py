@@ -17,7 +17,7 @@ def schedule_id():
     return "TARGET001"
 
 @pytest.mark.run(order=2)
-# @pytest.mark.dependency(depends=["workflow"])
+@pytest.mark.dependency(depends=["workflow"])
 def test_optic_scheduler_regression(engine, schedule_id):
     """
     Regression test for the optic scheduler.
