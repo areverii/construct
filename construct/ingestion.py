@@ -24,6 +24,11 @@ def ingest_schedule_data(
     for c in datetime_cols:
         if c in df.columns:
             df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Print out the converted baseline dates to confirm proper conversion.
+    print("Converted baseline dates from Excel:")
+    print(df[['bl_start', 'bl_finish']].head())
+
     df = df.replace({np.nan: None})
     
     with engine.begin() as conn:
@@ -63,8 +68,8 @@ def ingest_schedule_data(
             if not row.get("task_id"):
                 continue
             if schedule_type == "target":
-                bl_start = row.get("bl_start") or row.get("start_date")
-                bl_finish = row.get("bl_finish") or row.get("end_date")
+                bl_start = row.get("bl_start") # or row.get("start_date")
+                bl_finish = row.get("bl_finish") #or row.get("end_date")
                 task_dict = {
                     "schedule_id": schedule_id,
                     "schedule_type": schedule_type,

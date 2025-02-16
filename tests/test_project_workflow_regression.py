@@ -1,13 +1,16 @@
 import os
 import json
 import pytest
+from datetime import datetime
 from sqlalchemy import select, create_engine
-from construct.database import projects_table, pddl_mappings_table
+from construct.database import projects_table, tasks_table, pddl_mappings_table
 from construct.api import app
 from construct.project_management import set_current_in_progress_date  # a helper function
 
 # Global dictionary to share state between tests.
 workflow_state = {}
+
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # ------------------------------------------------------------------
 # TEST 1: Create the Project (Target)
@@ -57,12 +60,10 @@ def test_ingest_target_schedule(client, resources_dir):
 @pytest.mark.run(order=3)
 @pytest.mark.dependency(name="validate_target", depends=["ingest_target"])
 def test_validate_target_project_data():
-    # Create an engine that points to the same DB file used by the API endpoints.
     db_file = workflow_state.get("db_file")
     assert db_file, "DB file not found in workflow_state"
     engine = create_engine(f"sqlite:///{db_file}")
 
-    # Validate the target project record.
     with engine.connect() as conn:
         project = conn.execute(
             select(projects_table).where(projects_table.c.schedule_id == "TARGET001")
@@ -131,7 +132,6 @@ def test_update_inprogress_schedule_date():
     engine = create_engine(f"sqlite:///{db_file}")
 
     new_date = "2024-02-01 08:00:00"
-    # Use the helper function to update the schedule's current date.
     set_current_in_progress_date(engine, "INPROGRESS001", new_date)
     with engine.connect() as conn:
         updated_date = conn.execute(
@@ -157,3 +157,46 @@ def test_validate_inprogress_pddl_mapping():
     assert mapping, "No PDDL mapping found for in-progress schedule"
     assert mapping["domain_file"], "Domain file mapping is empty for in-progress schedule"
     assert mapping["problem_file"], "Problem file mapping is empty for in-progress schedule"
+
+# ------------------------------------------------------------------
+# TEST 8: Validate Ingestion of Baseline Dates for Chunking
+# ------------------------------------------------------------------
+pytest.mark.run(order=8)
+@pytest.mark.dependency(name="validate_ingestion_dates", depends=["validate_progress_pddl"])
+def test_ingestion_dates_regression():
+    """
+    This test verifies that tasks from the TARGET schedule have either both
+    a 'bl_start' and 'bl_finish' date (which can be parsed using DATE_FORMAT)
+    or neither is provided (which is acceptable). It fails if exactly one
+    value is missing.
+    """
+    db_file = workflow_state.get("db_file")
+    assert db_file, "DB file not found in workflow_state"
+    engine = create_engine(f"sqlite:///{db_file}")
+    
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(tasks_table).where(tasks_table.c.schedule_id == "TARGET001")
+        ).mappings().all()
+    assert rows, "No tasks found for schedule TARGET001"
+    
+    for row in rows:
+        task_id = row["task_id"]
+        bl_start = row.get("bl_start")
+        bl_finish = row.get("bl_finish")
+        
+        # Fail if exactly one date is missing.
+        if (bl_start and not bl_finish) or (bl_finish and not bl_start):
+            pytest.fail(f"Task {task_id} has only one baseline date: bl_start: {bl_start}, bl_finish: {bl_finish}")
+        # If both dates are missing, that's acceptable.
+        elif not bl_start and not bl_finish:
+            continue
+        # Both dates are present; ensure they can be parsed.
+        try:
+            datetime.strptime(bl_start, DATE_FORMAT)
+        except Exception as e:
+            pytest.fail(f"Task {task_id} has an invalid 'bl_start' value '{bl_start}': {e}")
+        try:
+            datetime.strptime(bl_finish, DATE_FORMAT)
+        except Exception as e:
+            pytest.fail(f"Task {task_id} has an invalid 'bl_finish' value '{bl_finish}': {e}")
